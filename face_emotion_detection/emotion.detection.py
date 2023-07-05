@@ -1,8 +1,21 @@
 import mediapipe as mp
 import numpy as np
 import cv2
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image as img_keras
+from collections import deque
+
 
 cap = cv2.VideoCapture(0)
+config = ConfigProto()
+config.gpu_options.allow_growth = True
+session = InteractiveSession(config=config)
+model = load_model('face_emotion_detection/models/_trained.hdf5', compile=False)
+Q = deque(maxlen=10)
+emotions = ("Angry", "Disgusted", "Feared", "Happy", "Sad", "Surprise", "Neutral")
+
 mp_face_mesh = mp.solutions.face_mesh
 mp_drawing = mp.solutions.drawing_utils
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, 
@@ -44,8 +57,22 @@ with mp_face_mesh.FaceMesh(
                 detected_face = frame[int(cy_min):int(cy_max), int(cx_min):int(cx_max)]
                 detected_face = cv2.cvtColor(detected_face, cv2.COLOR_BGR2GRAY)
                 detected_face = cv2.resize(detected_face, (64, 64))
+                frame_pixels = img_keras.img_to_array(detected_face)
+                frame_pixels = np.expand_dims(frame_pixels, axis=0)
+                frame_pixels /= 255
+                emotion = model.predict(frame_pixels)[0]
+                Q.append(emotion)
+                # print(Q) 
+                results = np.array(Q).mean(axis=0)
+                i = np.argmax(results)
+                label = emotions[i]
+                print(label)
+                cv2.putText(frame, label, (cx_min, cy_min),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.rectangle(frame, (cx_min, cy_min), (cx_max, cy_max), 
+                (0, 255, 0), 2)
         cv2.imshow('frame', frame)
-        cv2.imshow('detected_face', detected_face)
+        #cv2.imshow('detected_face', detected_face)
         if cv2.waitKey(20) & 0xFF == ord('x'):
             break
 cap.release()
